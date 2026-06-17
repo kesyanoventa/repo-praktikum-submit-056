@@ -1,254 +1,132 @@
-const express = require("express");
-const mysql = require("mysql2");
-const { BlobServiceClient } = require("@azure/storage-blob");
-const multer = require("multer");
-const path = require("path");
+const express = require('express');
+const mysql = require('mysql2');
+const { BlobServiceClient } = require('@azure/storage-blob');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-app.use(express.static("public"));
+app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 
-// =========================
-// DEBUG ENVIRONMENT
-// =========================
-console.log("DB_HOST =", process.env.DB_HOST);
-console.log("DB_USER =", process.env.DB_USER);
-console.log(
-  "DB_PASSWORD =",
-  process.env.DB_PASSWORD ? "ADA" : "KOSONG"
-);
-console.log("DB_NAME =", process.env.DB_NAME);
+// --- ROUTE UTAMA ---
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-// =========================
-// MYSQL CONNECTION
-// =========================
+// --- KONFIGURASI DATABASE (MENGGUNAKAN POOL AGAR TIDAK DISCONNECT) ---
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-
-  ssl: {
-    rejectUnauthorized: false,
-  },
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+    ssl: { rejectUnauthorized: false }
 });
 
-// Test koneksi saat startup
-pool.getConnection((err, connection) => {
-  if (err) {
-    console.error("MYSQL CONNECTION ERROR:");
-    console.error(err);
-  } else {
-    console.log("MYSQL CONNECTED!");
-    connection.release();
-  }
-});
+// Koneksi Blob Storage
+const blobServiceClient = BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
 
-// =========================
-// AZURE STORAGE
-// =========================
-let blobServiceClient;
-
-try {
-  blobServiceClient =
-    BlobServiceClient.fromConnectionString(
-      process.env.AZURE_STORAGE_CONNECTION_STRING
-    );
-
-  console.log("AZURE STORAGE CONNECTED!");
-} catch (err) {
-  console.error("AZURE STORAGE ERROR:");
-  console.error(err);
-}
-
-// =========================
-// HOME PAGE
-// =========================
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
-});
-
-// =========================
-// SUBMIT TASK
-// =========================
-app.post(
-  "/submit-task",
-  upload.single("file_tugas"),
-  async (req, res) => {
+// Endpoint untuk submit tugas
+app.post('/submit-task', upload.single('file_tugas'), async (req, res) => {
     try {
-      const {
-        nim,
-        name,
-        class_name,
-        course,
-      } = req.body;
+        const { nim, name, class_name, course } = req.body;
+        
+        if (!req.file) return res.status(400).send("Pilih file terlebih dahulu.");
 
-      if (!req.file) {
-        return res
-          .status(400)
-          .send("File belum dipilih.");
-      }
+        const blobName = `${nim}_${Date.now()}_${req.file.originalname}`;
 
-      console.log(
-        `Upload dari ${nim} - ${name}`
-      );
+        // 1. Upload ke Blob Storage
+        const containerClient = blobServiceClient.getContainerClient('tugas-praktikum');
+        await containerClient.createIfNotExists({ access: 'blob' });
 
-      // =========================
-      // UPLOAD KE BLOB STORAGE
-      // =========================
-      const containerName =
-        "tugas-praktikum";
+        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+        await blockBlobClient.uploadData(req.file.buffer);
+        const fileUrl = blockBlobClient.url;
 
-      const containerClient =
-        blobServiceClient.getContainerClient(
-          containerName
-        );
-
-      await containerClient.createIfNotExists({
-        access: "blob",
-      });
-
-      const blobName =
-        `${nim}_${Date.now()}_${req.file.originalname}`;
-
-      const blockBlobClient =
-        containerClient.getBlockBlobClient(
-          blobName
-        );
-
-      await blockBlobClient.uploadData(
-        req.file.buffer
-      );
-
-      const fileUrl =
-        blockBlobClient.url;
-
-      console.log(
-        "FILE BERHASIL UPLOAD:"
-      );
-      console.log(fileUrl);
-
-      // =========================
-      // SIMPAN KE DATABASE
-      // =========================
-      const sql = `
-      INSERT INTO submissions
-      (
-        nim,
-        name,
-        class,
-        course,
-        file_url
-      )
-      VALUES
-      (
-        ?, ?, ?, ?, ?
-      )
-      `;
-
-      pool.query(
-        sql,
-        [
-          nim,
-          name,
-          class_name,
-          course,
-          fileUrl,
-        ],
-        (err, result) => {
-          if (err) {
-            console.error(
-              "MYSQL INSERT ERROR:"
-            );
-            console.error(err);
-
-            return res
-              .status(500)
-              .send(
-                "Gagal simpan database: " +
-                  err.message
-              );
-          }
-
-          console.log(
-            "DATA BERHASIL DISIMPAN!"
-          );
-
-          res.send(`
-          <html>
-          <head>
-            <title>Berhasil</title>
-          </head>
-
-          <body
-            style="
-            font-family:Arial;
-            text-align:center;
-            margin-top:100px;
-            "
-          >
-            <h1>🌸 Tugas Berhasil Dikirim</h1>
-
-            <p>
-              Data berhasil disimpan
-              ke Azure Database
-            </p>
-
-            <a href="/">
-              Kirim Lagi
-            </a>
-          </body>
-          </html>
-          `);
-        }
-      );
+        // 2. Simpan ke MySQL menggunakan pool.query
+        const sql = "INSERT INTO submissions (nim, name, class, course, file_url) VALUES (?, ?, ?, ?, ?)";
+        pool.query(sql, [nim, name, class_name, course, fileUrl], (err) => {
+            if (err) {
+                console.error('MySQL Error:', err);
+                return res.status(500).send("Gagal simpan ke database: " + err.message);
+            }
+            res.send(`
+                <!DOCTYPE html>
+                <html lang="id">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Berhasil | Praktikum Submit</title>
+                    <style>
+                        body {
+                            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            background-color: #fce4ec;
+                            display: flex;
+                            justify-content: center;
+                            align-items: center;
+                            min-height: 100vh;
+                            margin: 0;
+                        }
+                        .container {
+                            background-color: white;
+                            padding: 2.5rem;
+                            border-radius: 20px;
+                            box-shadow: 0 10px 25px rgba(240, 98, 146, 0.2);
+                            width: 100%;
+                            max-width: 400px;
+                            text-align: center;
+                        }
+                        .icon {
+                            font-size: 50px;
+                            color: #ff85a2;
+                            margin-bottom: 15px;
+                        }
+                        h2 {
+                            color: #f06292;
+                            margin-bottom: 10px;
+                        }
+                        p {
+                            color: #333;
+                            line-height: 1.5;
+                            margin-bottom: 25px;
+                        }
+                        .btn-back {
+                            display: inline-block;
+                            width: 100%;
+                            background-color: #ff85a2;
+                            color: white;
+                            padding: 12px;
+                            text-decoration: none;
+                            border-radius: 10px;
+                            font-weight: bold;
+                            transition: background-color 0.3s;
+                        }
+                        .btn-back:hover {
+                            background-color: #f06292;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="icon">🌸</div>
+                        <h2>BERHASIL!</h2>
+                        <p>Tugas kamu telah aman tersimpan di Azure Cloud.</p>
+                        <a href="/" class="btn-back">Kirim Tugas Lain</a>
+                    </div>
+                </body>
+                </html>
+            `);
+        });
     } catch (err) {
-      console.error(
-        "SUBMIT ERROR:"
-      );
-      console.error(err);
-
-      res
-        .status(500)
-        .send(
-          "Terjadi Error: " +
-            err.message
-        );
+        res.status(500).send("Error Sistem: " + err.message);
     }
-  }
-);
-
-// =========================
-// LIST DATA
-// =========================
-app.get("/task-list", (req, res) => {
-  pool.query(
-    "SELECT * FROM submissions",
-    (err, result) => {
-      if (err) {
-        return res.send(err);
-      }
-
-      res.json(result);
-    }
-  );
 });
 
-// =========================
-// SERVER
-// =========================
-const PORT =
-  process.env.PORT || 3000;
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(
-    `Server running on port ${PORT}`
-  );
+    console.log(`Server running on port ${PORT}`);
 });
