@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Praktikum Submit</title>
+
+<style>
+
+:root{
+    --pink:#ff69b4;
+    --pink-soft:#ffe6f2;
+    --pink-dark:#d63384;
+}
+
+body{
+    font-family: Arial, sans-serif;
+    background: var(--pink-soft);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    min-height:100vh;
+}
+
+.container{
+    width:400px;
+    background:white;
+    padding:30px;
+    border-radius:15px;
+    box-shadow:0 0 15px rgba(0,0,0,.1);
+}
+
+h2{
+    text-align:center;
+    color:var(--pink-dark);
+}
+
+.form-group{
+    margin-bottom:15px;
+}
+
+label{
+    display:block;
+    margin-bottom:5px;
+    font-weight:bold;
+}
+
+input,
+select{
+    width:100%;
+    padding:10px;
+    border:1px solid #ccc;
+    border-radius:8px;
+}
+
+button{
+    width:100%;
+    background:var(--pink);
+    color:white;
+    border:none;
+    padding:12px;
+    border-radius:8px;
+    cursor:pointer;
+    font-size:16px;
+}
+
+button:hover{
+    background:var(--pink-dark);
+}
+
+.footer{
+    margin-top:20px;
+    text-align:center;
+    color:#888;
+    font-size:12px;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Praktikum Submit</h2>
+
+<form
+action="/submit-task"
+method="POST"
+enctype="multipart/form-data"
+>
+
+<div class="form-group">
+<label>NIM Mahasiswa</label>
+<input
+type="text"
+name="nim"
+placeholder="0920240056"
+required>
+</div>
+
+<div class="form-group">
+<label>Nama Lengkap</label>
+<input
+type="text"
+name="name"
+placeholder="Kesya Noventa Salsabila"
+required>
+</div>
+
+<div class="form-group">
+<label>Kelas</label>
+<input
+type="text"
+name="class_name"
+placeholder="TRPL 2A"
+required>
+</div>
+
+<div class="form-group">
+<label>Mata Kuliah</label>
+
+<select name="course">
+
+<option value="Cloud Computing">
+Cloud Computing
+</option>
+
+<option value="Pemrograman Web">
+Pemrograman Web
+</option>
+
+<option value="Machine Learning">
+Machine Learning
+</option>
+
+</select>
+</div>
+
+<div class="form-group">
+<label>Upload File Tugas</label>
+
+<input
+type="file"
+name="file_tugas"
+required>
+</div>
+
+<button type="submit">
+Kirim Tugas
+</button>
+
+</form>
+
+<div class="footer">
+Layanan Azure Cloud Submit
+</div>
+
+</div>
+
+</body>
+</html>
