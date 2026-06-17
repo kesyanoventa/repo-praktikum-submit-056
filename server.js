@@ -112,7 +112,6 @@ app.post('/submit-task', upload.single('file_tugas'), async (req, res) => {
                 </head>
                 <body>
                     <div class="container">
-                        <div class="icon">🌸</div>
                         <h2>BERHASIL!</h2>
                         <p>Tugas kamu telah aman tersimpan di Azure Cloud.</p>
                         <a href="/" class="btn-back">Kirim Tugas Lain</a>
